@@ -1,7 +1,6 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Book, Upload as UploadIcon, File, X } from "lucide-react";
+import { Book, Upload as UploadIcon, File, X, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,8 +18,32 @@ const Upload = () => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    const adminData = localStorage.getItem("admin");
+    if (userData) {
+      setUser(JSON.parse(userData));
+    } else if (adminData) {
+      setUser(JSON.parse(adminData));
+    } else {
+      navigate("/login");
+    }
+  }, [navigate]);
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("admin");
+    setUser(null);
+    toast({
+      title: "Logged out successfully",
+      description: "You have been logged out of Edu Market.",
+    });
+    navigate("/");
+  };
 
   const categories = [
     { value: "textbooks", label: "Textbooks" },
@@ -117,6 +140,10 @@ const Upload = () => {
     setFormData(prev => ({ ...prev, file: null }));
   };
 
+  if (!user) {
+    return <div>Loading...</div>;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -130,8 +157,10 @@ const Upload = () => {
             <div className="flex items-center space-x-4">
               <Link to="/browse" className="text-gray-700 hover:text-blue-600">Browse</Link>
               <Link to="/dashboard" className="text-gray-700 hover:text-blue-600">Dashboard</Link>
-              <Button variant="outline">
-                <Link to="/login">Login</Link>
+              <span className="text-sm text-gray-600">Welcome, {user.email}</span>
+              <Button variant="outline" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
               </Button>
             </div>
           </div>

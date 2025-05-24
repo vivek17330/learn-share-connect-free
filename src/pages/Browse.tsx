@@ -1,15 +1,57 @@
-
-import { useState } from "react";
-import { Link } from "react-router-dom";
-import { Search, Filter, Download, Book, FileText, Presentation, FolderOpen, Calendar, User } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Search, Filter, Download, Book, FileText, Presentation, FolderOpen, Calendar, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 
 const Browse = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [user, setUser] = useState<any>(null);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const userData = localStorage.getItem("user");
+    const adminData = localStorage.getItem("admin");
+    if (userData) {
+      setUser(JSON.parse(userData));
+    } else if (adminData) {
+      setUser(JSON.parse(adminData));
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("admin");
+    setUser(null);
+    toast({
+      title: "Logged out successfully",
+      description: "You have been logged out of Edu Market.",
+    });
+    navigate("/");
+  };
+
+  const handleDownload = (resourceTitle: string) => {
+    if (!user) {
+      toast({
+        title: "Login Required",
+        description: "Please log in to download resources.",
+        variant: "destructive",
+      });
+      navigate("/login");
+      return;
+    }
+    
+    // Simulate download
+    toast({
+      title: "Download Started",
+      description: `Downloading ${resourceTitle}...`,
+    });
+  };
 
   const categories = [
     { id: "all", name: "All Resources", icon: Book },
@@ -133,11 +175,27 @@ const Browse = () => {
               <span className="text-xl font-bold text-gray-900">Edu Market</span>
             </Link>
             <div className="flex items-center space-x-4">
-              <Link to="/upload" className="text-gray-700 hover:text-blue-600">Upload</Link>
-              <Link to="/dashboard" className="text-gray-700 hover:text-blue-600">Dashboard</Link>
-              <Link to="/login">
-                <Button variant="outline">Login</Button>
-              </Link>
+              {user ? (
+                <>
+                  <Link to="/upload" className="text-gray-700 hover:text-blue-600">Upload</Link>
+                  <Link to="/dashboard" className="text-gray-700 hover:text-blue-600">Dashboard</Link>
+                  <span className="text-sm text-gray-600">Welcome, {user.email}</span>
+                  <Button variant="outline" onClick={handleLogout}>
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Logout
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Link to="/upload" className="text-gray-700 hover:text-blue-600">Upload</Link>
+                  <Link to="/login">
+                    <Button variant="outline">Login</Button>
+                  </Link>
+                  <Link to="/register">
+                    <Button className="bg-blue-600 hover:bg-blue-700">Register</Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -239,7 +297,10 @@ const Browse = () => {
                       <Badge variant="secondary">{resource.subject}</Badge>
                     </div>
 
-                    <Button className="w-full mt-4 bg-blue-600 hover:bg-blue-700">
+                    <Button 
+                      className="w-full mt-4 bg-blue-600 hover:bg-blue-700"
+                      onClick={() => handleDownload(resource.title)}
+                    >
                       <Download className="h-4 w-4 mr-2" />
                       Download Resource
                     </Button>
