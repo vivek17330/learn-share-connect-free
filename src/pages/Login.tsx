@@ -19,26 +19,16 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate API call - Check for admin login
+    // Simple validation - in a real app, you'd validate against a database
     setTimeout(() => {
       if (email && password) {
-        // Check if admin login
-        if (email === "admin@edumarket.com" && password === "admin123") {
-          localStorage.setItem("admin", JSON.stringify({ email, isAdmin: true, isAuthenticated: true }));
-          toast({
-            title: "Admin login successful!",
-            description: "Welcome to the admin dashboard.",
-          });
-          navigate("/admin");
-        } else {
-          // Regular user login
-          localStorage.setItem("user", JSON.stringify({ email, isAuthenticated: true }));
-          toast({
-            title: "Login successful!",
-            description: "Welcome back to Edu Market.",
-          });
-          navigate("/dashboard");
-        }
+        // Store user data
+        localStorage.setItem("user", JSON.stringify({ email, isAuthenticated: true }));
+        toast({
+          title: "Login successful!",
+          description: "Welcome back to Edu Market.",
+        });
+        navigate("/dashboard");
       } else {
         toast({
           title: "Login failed",

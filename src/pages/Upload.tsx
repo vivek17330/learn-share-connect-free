@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Book, Upload as UploadIcon, File, X, LogOut } from "lucide-react";
@@ -7,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const Upload = () => {
   const [formData, setFormData] = useState({
@@ -111,6 +113,14 @@ const Upload = () => {
     }
   };
 
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -125,15 +135,53 @@ const Upload = () => {
       return;
     }
 
-    // Simulate file upload
-    setTimeout(() => {
+    try {
+      // Get file extension for file_type
+      const fileExtension = formData.file.name.split('.').pop()?.toUpperCase() || '';
+      
+      // Prepare resource data
+      const resourceData = {
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        subject: formData.subject,
+        file_name: formData.file.name,
+        file_size: formatFileSize(formData.file.size),
+        file_type: fileExtension,
+        uploaded_by: user?.email || 'Anonymous'
+      };
+
+      // Insert into database
+      const { data, error } = await supabase
+        .from('resources')
+        .insert([resourceData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Database error:', error);
+        toast({
+          title: "Upload failed",
+          description: "Failed to save resource to database.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Upload successful!",
+          description: "Your resource has been uploaded and is now available to the community.",
+        });
+        navigate("/browse");
+      }
+    } catch (error) {
+      console.error('Error uploading resource:', error);
       toast({
-        title: "Upload successful!",
-        description: "Your resource has been uploaded and is now available to the community.",
+        title: "Upload failed",
+        description: "An error occurred while uploading your resource.",
+        variant: "destructive",
       });
-      navigate("/dashboard");
+    } finally {
       setIsLoading(false);
-    }, 2000);
+    }
   };
 
   const removeFile = () => {
@@ -196,7 +244,7 @@ const Upload = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description" className="text-sm font-medium">Description *</Label>
+                <Label htmlFor="description" className="text-sm font-medium">Description</Label>
                 <Textarea
                   id="description"
                   name="description"
@@ -204,7 +252,6 @@ const Upload = () => {
                   onChange={handleInputChange}
                   placeholder="Describe what this resource covers and how it can help other students"
                   rows={4}
-                  required
                 />
               </div>
 
@@ -264,7 +311,7 @@ const Upload = () => {
                       <div className="text-left">
                         <p className="font-medium text-gray-900">{formData.file.name}</p>
                         <p className="text-sm text-gray-600">
-                          {(formData.file.size / (1024 * 1024)).toFixed(2)} MB
+                          {formatFileSize(formData.file.size)}
                         </p>
                       </div>
                       <Button

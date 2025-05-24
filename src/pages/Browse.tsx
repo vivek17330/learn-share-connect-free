@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Search, Filter, Download, Book, FileText, Presentation, FolderOpen, Calendar, User, LogOut } from "lucide-react";
@@ -6,11 +7,29 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Resource {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  subject: string;
+  file_name: string;
+  file_size: string;
+  file_type: string;
+  uploaded_by: string;
+  upload_date: string;
+  downloads: number;
+  views: number;
+}
 
 const Browse = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [user, setUser] = useState<any>(null);
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -22,7 +41,33 @@ const Browse = () => {
     } else if (adminData) {
       setUser(JSON.parse(adminData));
     }
+    
+    fetchResources();
   }, []);
+
+  const fetchResources = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('resources')
+        .select('*')
+        .order('upload_date', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching resources:', error);
+        toast({
+          title: "Error loading resources",
+          description: "Failed to load educational resources.",
+          variant: "destructive",
+        });
+      } else {
+        setResources(data || []);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("user");
@@ -35,7 +80,7 @@ const Browse = () => {
     navigate("/");
   };
 
-  const handleDownload = (resourceTitle: string) => {
+  const handleDownload = async (resource: Resource) => {
     if (!user) {
       toast({
         title: "Login Required",
@@ -46,11 +91,33 @@ const Browse = () => {
       return;
     }
     
-    // Simulate download
-    toast({
-      title: "Download Started",
-      description: `Downloading ${resourceTitle}...`,
-    });
+    try {
+      // Update download count
+      const { error } = await supabase
+        .from('resources')
+        .update({ downloads: resource.downloads + 1 })
+        .eq('id', resource.id);
+
+      if (error) {
+        console.error('Error updating download count:', error);
+      }
+
+      // Simulate download
+      toast({
+        title: "Download Started",
+        description: `Downloading ${resource.title}...`,
+      });
+
+      // Refresh resources to show updated download count
+      fetchResources();
+    } catch (error) {
+      console.error('Error:', error);
+      toast({
+        title: "Download failed",
+        description: "Failed to download the resource.",
+        variant: "destructive",
+      });
+    }
   };
 
   const categories = [
@@ -61,84 +128,9 @@ const Browse = () => {
     { id: "projects", name: "Projects", icon: FolderOpen }
   ];
 
-  const resources = [
-    {
-      id: 1,
-      title: "Advanced Mathematics Textbook",
-      description: "Comprehensive calculus and linear algebra textbook with solved examples",
-      category: "textbooks",
-      type: "PDF",
-      size: "12.5 MB",
-      uploadedBy: "Sarah Johnson",
-      uploadDate: "2024-01-15",
-      downloads: 1250,
-      subject: "Mathematics"
-    },
-    {
-      id: 2,
-      title: "Physics Lab Notes - Quantum Mechanics",
-      description: "Detailed lab notes covering quantum mechanics experiments and theory",
-      category: "notes",
-      type: "PDF",
-      size: "4.2 MB",
-      uploadedBy: "Mike Chen",
-      uploadDate: "2024-01-12",
-      downloads: 890,
-      subject: "Physics"
-    },
-    {
-      id: 3,
-      title: "Computer Science Presentation - Algorithms",
-      description: "PowerPoint presentation on sorting algorithms and complexity analysis",
-      category: "presentations",
-      type: "PPTX",
-      size: "8.7 MB",
-      uploadedBy: "Alex Rivera",
-      uploadDate: "2024-01-10",
-      downloads: 567,
-      subject: "Computer Science"
-    },
-    {
-      id: 4,
-      title: "Web Development Project - E-commerce Site",
-      description: "Complete React.js e-commerce project with backend API and database",
-      category: "projects",
-      type: "ZIP",
-      size: "25.3 MB",
-      uploadedBy: "Emma Davis",
-      uploadDate: "2024-01-08",
-      downloads: 342,
-      subject: "Web Development"
-    },
-    {
-      id: 5,
-      title: "Biology Study Guide - Cell Structure",
-      description: "Comprehensive study notes on cell biology and molecular structures",
-      category: "notes",
-      type: "PDF",
-      size: "6.1 MB",
-      uploadedBy: "David Wilson",
-      uploadDate: "2024-01-05",
-      downloads: 723,
-      subject: "Biology"
-    },
-    {
-      id: 6,
-      title: "Marketing Strategy Presentation",
-      description: "Business presentation on digital marketing strategies and case studies",
-      category: "presentations",
-      type: "PPTX",
-      size: "11.4 MB",
-      uploadedBy: "Lisa Park",
-      uploadDate: "2024-01-03",
-      downloads: 456,
-      subject: "Business"
-    }
-  ];
-
   const filteredResources = resources.filter(resource => {
     const matchesSearch = resource.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         resource.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         resource.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          resource.subject.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "all" || resource.category === selectedCategory;
     return matchesSearch && matchesCategory;
@@ -163,6 +155,17 @@ const Browse = () => {
       default: return "bg-gray-100 text-gray-800";
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading resources...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -205,7 +208,7 @@ const Browse = () => {
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Browse Educational Resources</h1>
-          <p className="text-gray-600">Discover thousands of free academic resources shared by students worldwide</p>
+          <p className="text-gray-600">Discover educational resources shared by students worldwide</p>
         </div>
 
         {/* Search and Filter */}
@@ -270,7 +273,7 @@ const Browse = () => {
                         {resource.category.charAt(0).toUpperCase() + resource.category.slice(1)}
                       </Badge>
                     </div>
-                    <Badge variant="outline">{resource.type}</Badge>
+                    <Badge variant="outline">{resource.file_type}</Badge>
                   </div>
                   <CardTitle className="text-lg line-clamp-2">{resource.title}</CardTitle>
                   <CardDescription className="line-clamp-2">{resource.description}</CardDescription>
@@ -280,16 +283,16 @@ const Browse = () => {
                     <div className="flex items-center gap-4 text-sm text-gray-600">
                       <span className="flex items-center gap-1">
                         <User className="h-3 w-3" />
-                        {resource.uploadedBy}
+                        {resource.uploaded_by}
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        {new Date(resource.uploadDate).toLocaleDateString()}
+                        {new Date(resource.upload_date).toLocaleDateString()}
                       </span>
                     </div>
                     
                     <div className="flex items-center justify-between text-sm text-gray-600">
-                      <span>Size: {resource.size}</span>
+                      <span>Size: {resource.file_size}</span>
                       <span>{resource.downloads} downloads</span>
                     </div>
 
@@ -299,7 +302,7 @@ const Browse = () => {
 
                     <Button 
                       className="w-full mt-4 bg-blue-600 hover:bg-blue-700"
-                      onClick={() => handleDownload(resource.title)}
+                      onClick={() => handleDownload(resource)}
                     >
                       <Download className="h-4 w-4 mr-2" />
                       Download Resource
@@ -311,13 +314,16 @@ const Browse = () => {
           })}
         </div>
 
-        {filteredResources.length === 0 && (
+        {filteredResources.length === 0 && !loading && (
           <div className="text-center py-12">
             <div className="max-w-md mx-auto">
               <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No resources found</h3>
               <p className="text-gray-600 mb-4">
-                Try adjusting your search terms or browse different categories.
+                {resources.length === 0 
+                  ? "No resources have been uploaded yet. Be the first to share!"
+                  : "Try adjusting your search terms or browse different categories."
+                }
               </p>
               <Button onClick={() => {setSearchTerm(""); setSelectedCategory("all");}} variant="outline">
                 Clear Filters

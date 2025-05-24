@@ -6,23 +6,76 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+
+interface Resource {
+  id: string;
+  title: string;
+  category: string;
+  upload_date: string;
+  downloads: number;
+  views: number;
+}
 
 const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
+  const [userUploads, setUserUploads] = useState<Resource[]>([]);
+  const [stats, setStats] = useState({
+    totalUploads: 0,
+    totalDownloads: 0,
+    totalViews: 0
+  });
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
     const userData = localStorage.getItem("user");
-    if (!userData) {
+    const adminData = localStorage.getItem("admin");
+    if (!userData && !adminData) {
       navigate("/login");
     } else {
-      setUser(JSON.parse(userData));
+      const currentUser = userData ? JSON.parse(userData) : JSON.parse(adminData);
+      setUser(currentUser);
+      fetchUserData(currentUser.email);
     }
   }, [navigate]);
 
+  const fetchUserData = async (userEmail: string) => {
+    try {
+      // Fetch user's uploads
+      const { data: uploads, error: uploadsError } = await supabase
+        .from('resources')
+        .select('*')
+        .eq('uploaded_by', userEmail)
+        .order('upload_date', { ascending: false });
+
+      if (uploadsError) {
+        console.error('Error fetching uploads:', uploadsError);
+      } else {
+        setUserUploads(uploads || []);
+        
+        // Calculate stats
+        const totalUploads = uploads?.length || 0;
+        const totalDownloads = uploads?.reduce((sum, item) => sum + item.downloads, 0) || 0;
+        const totalViews = uploads?.reduce((sum, item) => sum + item.views, 0) || 0;
+        
+        setStats({
+          totalUploads,
+          totalDownloads,
+          totalViews
+        });
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("user");
+    localStorage.removeItem("admin");
     toast({
       title: "Logged out successfully",
       description: "You have been logged out of Edu Market.",
@@ -30,42 +83,34 @@ const Dashboard = () => {
     navigate("/");
   };
 
-  const stats = [
-    { title: "Resources Uploaded", value: "12", icon: Upload, color: "text-blue-600" },
-    { title: "Total Downloads", value: "1,247", icon: Download, color: "text-green-600" },
-    { title: "Community Points", value: "856", icon: BarChart3, color: "text-purple-600" },
-    { title: "Profile Views", value: "324", icon: Users, color: "text-orange-600" }
-  ];
+  const handleDeleteResource = async (resourceId: string) => {
+    try {
+      const { error } = await supabase
+        .from('resources')
+        .delete()
+        .eq('id', resourceId);
 
-  const myUploads = [
-    {
-      id: 1,
-      title: "Advanced Calculus Textbook",
-      category: "textbooks",
-      uploadDate: "2024-01-15",
-      downloads: 523,
-      views: 1200,
-      status: "active"
-    },
-    {
-      id: 2,
-      title: "Physics Lab Notes - Quantum Mechanics",
-      category: "notes",
-      uploadDate: "2024-01-12",
-      downloads: 342,
-      views: 890,
-      status: "active"
-    },
-    {
-      id: 3,
-      title: "Web Development Project Files",
-      category: "projects",
-      uploadDate: "2024-01-08",
-      downloads: 198,
-      views: 456,
-      status: "pending"
+      if (error) {
+        console.error('Error deleting resource:', error);
+        toast({
+          title: "Delete failed",
+          description: "Failed to delete the resource.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Resource deleted",
+          description: "The resource has been successfully deleted.",
+        });
+        // Refresh user data
+        if (user) {
+          fetchUserData(user.email);
+        }
+      }
+    } catch (error) {
+      console.error('Error:', error);
     }
-  ];
+  };
 
   const getCategoryColor = (category: string) => {
     switch (category) {
@@ -77,9 +122,23 @@ const Dashboard = () => {
     }
   };
 
-  if (!user) {
-    return <div>Loading...</div>;
+  if (!user || loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
   }
+
+  const dashboardStats = [
+    { title: "Resources Uploaded", value: stats.totalUploads.toString(), icon: Upload, color: "text-blue-600" },
+    { title: "Total Downloads", value: stats.totalDownloads.toLocaleString(), icon: Download, color: "text-green-600" },
+    { title: "Total Views", value: stats.totalViews.toLocaleString(), icon: Eye, color: "text-purple-600" },
+    { title: "Community Impact", value: "Active", icon: Users, color: "text-orange-600" }
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -119,7 +178,7 @@ const Dashboard = () => {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {stats.map((stat, index) => {
+          {dashboardStats.map((stat, index) => {
             const Icon = stat.icon;
             return (
               <Card key={index}>
@@ -144,60 +203,70 @@ const Dashboard = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  My Uploads
+                  My Uploads ({userUploads.length})
                 </CardTitle>
                 <CardDescription>
                   Manage your uploaded educational resources
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {myUploads.map((upload) => (
-                    <div key={upload.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-gray-900 mb-1">{upload.title}</h4>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge className={getCategoryColor(upload.category)}>
-                            {upload.category.charAt(0).toUpperCase() + upload.category.slice(1)}
-                          </Badge>
-                          <Badge variant={upload.status === "active" ? "default" : "secondary"}>
-                            {upload.status}
-                          </Badge>
+                {userUploads.length === 0 ? (
+                  <div className="text-center py-8">
+                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No uploads yet</h3>
+                    <p className="text-gray-600 mb-4">Start sharing your educational resources with the community!</p>
+                    <Link to="/upload">
+                      <Button className="bg-blue-600 hover:bg-blue-700">
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Your First Resource
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {userUploads.map((upload) => (
+                      <div key={upload.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <h4 className="font-medium text-gray-900 mb-1">{upload.title}</h4>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge className={getCategoryColor(upload.category)}>
+                              {upload.category.charAt(0).toUpperCase() + upload.category.slice(1)}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-gray-600">
+                            <span className="flex items-center gap-1">
+                              <Download className="h-3 w-3" />
+                              {upload.downloads} downloads
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Eye className="h-3 w-3" />
+                              {upload.views} views
+                            </span>
+                            <span>Uploaded {new Date(upload.upload_date).toLocaleDateString()}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-600">
-                          <span className="flex items-center gap-1">
-                            <Download className="h-3 w-3" />
-                            {upload.downloads} downloads
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Eye className="h-3 w-3" />
-                            {upload.views} views
-                          </span>
-                          <span>Uploaded {new Date(upload.uploadDate).toLocaleDateString()}</span>
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-red-600 hover:text-red-700"
+                            onClick={() => handleDeleteResource(upload.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm">
-                          <Eye className="h-4 w-4" />
+                    ))}
+                    <div className="mt-6">
+                      <Link to="/upload">
+                        <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                          <Upload className="h-4 w-4 mr-2" />
+                          Upload New Resource
                         </Button>
-                        <Button variant="outline" size="sm">
-                          <Settings className="h-4 w-4" />
-                        </Button>
-                        <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      </Link>
                     </div>
-                  ))}
-                </div>
-                <div className="mt-6">
-                  <Link to="/upload">
-                    <Button className="w-full bg-blue-600 hover:bg-blue-700">
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload New Resource
-                    </Button>
-                  </Link>
-                </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -222,10 +291,6 @@ const Dashboard = () => {
                     Browse Market
                   </Button>
                 </Link>
-                <Button className="w-full justify-start" variant="outline">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Account Settings
-                </Button>
               </CardContent>
             </Card>
 
@@ -237,42 +302,16 @@ const Dashboard = () => {
               <CardContent>
                 <div className="space-y-3">
                   <div>
-                    <p className="text-sm text-gray-600">Member since</p>
-                    <p className="font-medium">January 2024</p>
+                    <p className="text-sm text-gray-600">Email</p>
+                    <p className="font-medium">{user.email}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Reputation Level</p>
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">Advanced Contributor</p>
-                      <Badge className="bg-gold-100 text-gold-800">⭐</Badge>
-                    </div>
+                    <p className="text-sm text-gray-600">Member since</p>
+                    <p className="font-medium">Today</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Community Impact</p>
-                    <p className="font-medium">Helped 1,247 students</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recent Activity */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Activity</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Download className="h-3 w-3 text-green-600" />
-                    <span>Your "Calculus Notes" was downloaded 5 times today</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Upload className="h-3 w-3 text-blue-600" />
-                    <span>New resource upload approved</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Users className="h-3 w-3 text-purple-600" />
-                    <span>Gained 15 new profile views</span>
+                    <p className="font-medium">Helped {stats.totalDownloads} downloads</p>
                   </div>
                 </div>
               </CardContent>
